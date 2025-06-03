@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "workflow-tests"
+version = "0.1.0"
+description = "A simple Python project for workflow testing."
+authors = ["Karol Katerżawa <karol.katerzawa@syncron.com>"]
+packages = [
+    { include = "main", from = "src" }
+]
+
+[tool.poetry.dependencies]
+python = ">=3.8,<4.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^8.0.0"
+
+[tool.pytest]
+[tool.pytest.ini_options]
+# PyTest configuration: https://docs.pytest.org/en/latest/reference/customize.html
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(levelname)8s %(message)s"
+
+testpaths = ['tests']
+
