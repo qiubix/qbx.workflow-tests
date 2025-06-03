@@ -4,13 +4,57 @@ on:
   push:
     branches: [ main ]
   pull_request:
+  repository_dispatch:
+    types: [ verify_auto_pr ]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
 
 jobs:
+  input-validation:
+    name: Prerequisite checks
+    runs-on: ubuntu-latest
+    outputs:
+      source_pr: ${{ steps.set-vars.outputs.source_pr }}
+      commit_sha: ${{ steps.set-vars.outputs.commit_sha }}
+    steps:
+      - name: Validate source
+        run: |
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+            if ! [[ "${{ github.event.client_payload.pr_number }}" =~ ^[0-9]+$ ]]; then
+              echo "Invalid PR number payload"
+              exit 1
+            fi
+          fi
+
+      - name: Set variables
+        id: set-vars
+        run: |
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+            echo "source_pr=${{ github.event.client_payload.pr_number }}" >> $GITHUB_OUTPUT
+            echo "commit_sha=${{ github.event.client_payload.commit_sha }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "source_pr=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "commit_sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "source_pr=" >> $GITHUB_OUTPUT
+            echo "commit_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+      - name: Log workflow chain
+        run: |
+          echo "Workflow triggered by: ${{ github.event_name }}"
+          echo "Source PR: ${{ steps.set-vars.outputs.source_pr }}"
+          echo "Commit SHA: ${{ steps.set-vars.outputs.commit_sha }}"
+
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.input-validation.outputs.commit_sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -28,4 +72,23 @@ jobs:
       - name: Run tests
         run: |
           poetry run pytest
+      
+      - name: Comment on the pull request with workflow result
+        if: github.event_name == 'repository_dispatch'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const prNumber = process.env.PR_NUMBER;
+            const runUrl = `${process.env.RUN_URL}`;
+            const status = '${{ job.status }}' === 'success' ? 'succeeded ✅' : 'failed ❌';
+            const body = `Automated verification workflow ${status}. See details: ${runUrl}`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(prNumber),
+              body: body
+            });
+        env:
+          PR_NUMBER: ${{ github.event.client_payload.pr_number || github.event.inputs.source_pr }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 

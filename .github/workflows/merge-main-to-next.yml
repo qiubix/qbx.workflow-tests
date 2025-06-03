@@ -22,7 +22,7 @@ permissions:
 jobs:
   create-pr-to-next:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
-    runs-on: [worker-small]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
